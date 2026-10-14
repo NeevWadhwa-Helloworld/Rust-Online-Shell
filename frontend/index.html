@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Rust Online Shell (WASM + Axum)</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.10.0/lib/addon-fit.min.js"></script>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      html, body {
+        background-color: #0f172a;
+        overflow: hidden;
+        height: 100vh;
+        width: 100vw;
+        margin: 0;
+      }
+      .xterm-viewport::-webkit-scrollbar {
+        width: 8px;
+      }
+      .xterm-viewport::-webkit-scrollbar-thumb {
+        background-color: #334155;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      window.mountXterm = function(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        container.innerHTML = '';
+
+        const term = new Terminal({
+          convertEol: true,
+          cursorBlink: true,
+          cursorStyle: 'block',
+          fontFamily: "'JetBrains Mono', 'Fira Code', 'Courier New', monospace",
+          fontSize: 14,
+          theme: {
+            background: '#0f172a',
+            foreground: '#f8fafc',
+            cursor: '#38bdf8',
+            selectionBackground: '#1e3a8a',
+            black: '#1e293b',
+            red: '#ef4444',
+            green: '#22c55e',
+            yellow: '#eab308',
+            blue: '#3b82f6',
+            magenta: '#a855f7',
+            cyan: '#06b6d4',
+            white: '#f8fafc',
+          }
+        });
+
+        const fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+        term.open(container);
+        setTimeout(() => fitAddon.fit(), 50);
+        window.addEventListener('resize', () => fitAddon.fit());
+
+        let userId = localStorage.getItem('shell_user_id');
+        if (!userId) {
+          userId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+            ? crypto.randomUUID()
+            : 'user-' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
+          localStorage.setItem('shell_user_id', userId);
+        }
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host || '127.0.0.1:3000';
+        const wsUrl = `${protocol}//${host}/ws?token=${encodeURIComponent(userId)}`;
+
+        const notifyStatus = (text, color) => {
+          window.dispatchEvent(new CustomEvent('shell-status', { detail: { text, color } }));
+        };
+
+        notifyStatus('Connecting...', '#eab308');
+        const ws = new WebSocket(wsUrl);
+
+        ws.onopen = () => {
+          notifyStatus('Connected', '#22c55e');
+          term.focus();
+        };
+
+        ws.onmessage = (e) => {
+          term.write(e.data);
+        };
+
+        ws.onclose = () => {
+          notifyStatus('Disconnected', '#ef4444');
+          term.write('\r\n\x1b[31m[Session terminated. Click "Restart" or refresh to reconnect]\x1b[0m\r\n');
+        };
+
+        ws.onerror = () => {
+          notifyStatus('Error', '#ef4444');
+        };
+
+        term.onData((data) => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
+          }
+        });
+
+        window.__shellTerm = term;
+        window.__shellWs = ws;
+      };
+    </script>
+  </body>
+</html>

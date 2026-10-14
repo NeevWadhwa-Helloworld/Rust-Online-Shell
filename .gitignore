@@ -1,0 +1,10 @@
+# Rust build artifacts
+/target
+Cargo.lock
+
+# User storage (sandbox folders created during testing)
+/storage
+
+# OS metadata
+.DS_Store
+Thumbs.db
