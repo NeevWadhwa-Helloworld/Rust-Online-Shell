@@ -101,7 +101,7 @@ fn get_user_home_dir(token: &str) -> PathBuf {
 
     let user_home = base_dir.join(token).join("home");
     let _ = std::fs::create_dir_all(&user_home);
-    user_home
+    std::fs::canonicalize(&user_home).unwrap_or(user_home)
 }
 
 async fn handle_socket(socket: WebSocket, token: String) {
@@ -122,7 +122,7 @@ async fn handle_socket(socket: WebSocket, token: String) {
     {
         Ok(child) => child,
         Err(err) => {
-            let msg = format!("Failed to start shell: {}\r\n", err);
+            let msg = format!("Failed to start shell (exe: {:?}, cwd: {:?}): {}\r\n", shell_path, user_home, err);
             tracing::error!("{}", msg);
             let _ = ws_sender.send(Message::Text(msg)).await;
             return;
@@ -232,26 +232,28 @@ fn find_shell_binary() -> PathBuf {
     if let Ok(explicit) = std::env::var("SHELL_BINARY_PATH") {
         let p = PathBuf::from(explicit);
         if p.exists() {
-            return p;
+            return std::fs::canonicalize(&p).unwrap_or(p);
         }
     }
 
-    let mut candidates = vec![
-        PathBuf::from(format!("target/release/{}", exe_name)),
-        PathBuf::from(format!("target/debug/{}", exe_name)),
-        PathBuf::from(format!("../target/release/{}", exe_name)),
-        PathBuf::from(format!("../target/debug/{}", exe_name)),
-    ];
+    let mut candidates = Vec::new();
 
+    // 1. Check right next to current running server executable
     if let Ok(current_exe) = std::env::current_exe() {
         if let Some(parent) = current_exe.parent() {
             candidates.push(parent.join(exe_name));
         }
     }
 
+    // 2. Relative paths from workspace root
+    candidates.push(PathBuf::from(format!("target/release/{}", exe_name)));
+    candidates.push(PathBuf::from(format!("target/debug/{}", exe_name)));
+    candidates.push(PathBuf::from(format!("../target/release/{}", exe_name)));
+    candidates.push(PathBuf::from(format!("../target/debug/{}", exe_name)));
+
     for c in &candidates {
         if c.exists() && c.is_file() {
-            return c.clone();
+            return std::fs::canonicalize(c).unwrap_or_else(|_| c.clone());
         }
     }
 
