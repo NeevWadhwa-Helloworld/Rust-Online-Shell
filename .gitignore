@@ -1,6 +1,6 @@
 # Rust build artifacts
 /target
-Cargo.lock
+
 
 # User storage (sandbox folders created during testing)
 /storage
@@ -8,3 +8,7 @@ Cargo.lock
 # OS metadata
 .DS_Store
 Thumbs.db
+
+# Local cargo configs
+.cargo/
+
